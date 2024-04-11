@@ -66,7 +66,7 @@ var emailTemplate = `
 <head>
 	<title>Job Listings</title>
 </head>
-<body style="background-image: url('cid:jobs_header.png'); background-size: cover; background-position: center;">
+<body>
 
 	<!-- Email content -->
 	<div style="padding: 20px;">
