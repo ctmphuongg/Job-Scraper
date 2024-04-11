@@ -23,8 +23,10 @@ type Job struct {
 }
 
 func main() { 
-	//debug 
+
 	var newJobPostings []Job;
+
+// debug 
 // newJob := Job{
 // 	Title:    "testA",
 // 	Company:  "companyA",

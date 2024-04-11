@@ -66,22 +66,27 @@ var emailTemplate = `
 <head>
 	<title>Job Listings</title>
 </head>
-<body>
-	<h1>Job Listings</h1>
-	<table border="1">
-		<tr>
-			<th>Company</th>
-			<th>Title</th>
-			<th>Location</th>
-		</tr>
-		{{range .}}
-		<tr>
-			<td>{{.Company}}</td>
-			<td>{{.Title}}</td>
-			<td>{{.Location}}</td>
-		</tr>
-		{{end}}
-	</table>
+<body style="background-image: url('cid:jobs_header.png'); background-size: cover; background-position: center;">
+
+	<!-- Email content -->
+	<div style="padding: 20px;">
+		<h1 style="text-align: center; color: #333;">Job Listings</h1>
+		<table border="1" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+			<tr style="background-color: #f2f2f2;">
+				<th style="padding: 10px;">Company</th>
+				<th style="padding: 10px;">Title</th>
+				<th style="padding: 10px;">Location</th>
+			</tr>
+			{{range .}}
+			<tr>
+				<td style="padding: 10px;">{{.Company}}</td>
+				<td style="padding: 10px;">{{.Title}}</td>
+				<td style="padding: 10px;">{{.Location}}</td>
+			</tr>
+			{{end}}
+		</table>
+	</div>
+
 </body>
 </html>
 `
