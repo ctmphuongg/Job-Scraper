@@ -25,34 +25,32 @@ func main() {
 
 	// var JobPostings []Job;
 	// Set up MongoDB 
-  
-	// Get keys from dotenv
-	err := godotenv.Load(".env")
-	if err != nil{
-		log.Fatalf("Error loading .env file: %s", err)
-	 }
-	uri := os.Getenv("MONGO_URI")
-
-	// Use the SetServerAPIOptions() method to set the version of the Stable API on the client
-  serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-  opts := options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI)
-
-  // Create a new client and connect to the server
-  client, err := mongo.Connect(context.TODO(), opts)
-  if err != nil {
-    panic(err)
-  }
-  defer func() {
-    if err = client.Disconnect(context.TODO()); err != nil {
-      panic(err)
-    }
-  }()
-
-  // Send a ping to confirm a successful connection
-  if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
-    panic(err)
-  }
-  fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
+		// Get keys from dotenv
+		err := godotenv.Load(".env")
+		if err != nil {
+			log.Fatalf("Error loading .env file: %s", err)
+		}
+		uri := os.Getenv("MONGO_URI")
+	
+		// Use the SetServerAPIOptions() method to set the version of the Stable API on the client
+		serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+		opts := options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI)
+	
+		// Create a new client and connect to the server
+		client, err := mongo.Connect(context.TODO(), opts)
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			if err = client.Disconnect(context.TODO()); err != nil {
+				panic(err)
+			}
+		}()
+			// Send a ping to confirm a successful connection
+		if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
+			panic(err)
+		}
+		fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
 
 	// Create collection 
 	var dbName = "jobDatabase"
@@ -78,12 +76,26 @@ func main() {
 				Company:  company,
 				Location: location,
 			}
-			
-			// JobPostings = append(JobPostings, newJob)
-			_, err := collection.InsertOne(context.Background(), newJob)
+
+				// Check if the job already exists in the database
+			exists, err := jobExists(client, collection, newJob)
 			if err != nil {
-				log.Printf("Failed to insert job into MongoDB: %v", err)
+				log.Fatal("Error checking job existence:", err)
 			}
+			
+			if exists {
+				fmt.Println("Job already exist, skipping")
+			} else {
+				// JobPostings = append(JobPostings, newJob)
+				_, err := collection.InsertOne(context.Background(), newJob)
+				if err != nil {
+					log.Printf("Failed to insert job into MongoDB: %v", err)
+				} else {
+					fmt.Println("Job added to the database successfully!")
+				}
+			}
+
+			
 	})})
 	
 	c.OnError(func(r *colly.Response, err error) {
@@ -91,4 +103,26 @@ func main() {
 })
 	c.Visit("https://github.com/SimplifyJobs/Summer2024-Internships")
 		}
+
+func jobExists(client *mongo.Client, collection *mongo.Collection, job Job) (bool, error) {
+	// Define filter criteria to find a job by company and title
+	filter := bson.M{"company": job.Company, "title": job.Title}
+
+	// Execute a find one operation
+	var result Job
+	err := collection.FindOne(context.Background(), filter).Decode(&result)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// Job not found
+			return false, nil
+		}
+		// Other error occurred
+		return false, err
+	}
+
+	// Job found
+	return true, nil
+}
+
+
 
