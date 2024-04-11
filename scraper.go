@@ -2,6 +2,7 @@ package main
 
 import (
 	// "encoding/csv"
+
 	"context"
 	"fmt"
 	"log"
@@ -22,8 +23,21 @@ type Job struct {
 }
 
 func main() { 
-
-	// var JobPostings []Job;
+	//debug 
+	var newJobPostings []Job;
+// newJob := Job{
+// 	Title:    "testA",
+// 	Company:  "companyA",
+// 	Location: "locA",
+// }
+// newJobPostings = append(newJobPostings, newJob)
+// newJob2 := Job{
+// 	Title:    "testB",
+// 	Company:  "companyB",
+// 	Location: "locB",
+// }
+// newJobPostings = append(newJobPostings, newJob2)
+	
 	// Set up MongoDB 
 		// Get keys from dotenv
 		err := godotenv.Load(".env")
@@ -85,6 +99,7 @@ func main() {
 			
 			if exists {
 				fmt.Println("Job already exist, skipping")
+				
 			} else {
 				// JobPostings = append(JobPostings, newJob)
 				_, err := collection.InsertOne(context.Background(), newJob)
@@ -93,6 +108,7 @@ func main() {
 				} else {
 					fmt.Println("Job added to the database successfully!")
 				}
+				newJobPostings = append(newJobPostings, newJob)
 			}
 
 			
@@ -102,7 +118,8 @@ func main() {
 		fmt.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
 })
 	c.Visit("https://github.com/SimplifyJobs/Summer2024-Internships")
-		}
+	emailSending(newJobPostings)
+}
 
 func jobExists(client *mongo.Client, collection *mongo.Collection, job Job) (bool, error) {
 	// Define filter criteria to find a job by company and title
@@ -123,6 +140,4 @@ func jobExists(client *mongo.Client, collection *mongo.Collection, job Job) (boo
 	// Job found
 	return true, nil
 }
-
-
 
