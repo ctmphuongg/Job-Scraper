@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
+	"time"
+
+	"github.com/chromedp/chromedp"
 
 	"github.com/gocolly/colly"
 	"github.com/joho/godotenv"
@@ -25,27 +29,36 @@ type Job struct {
 func main() { 
 
 	var newJobPostings []Job;
-
-// debug 
-// newJob := Job{
-// 	Title:    "testA",
-// 	Company:  "companyA",
-// 	Location: "locA",
-// }
-// newJobPostings = append(newJobPostings, newJob)
-// newJob2 := Job{
-// 	Title:    "testB",
-// 	Company:  "companyB",
-// 	Location: "locB",
-// }
-// newJobPostings = append(newJobPostings, newJob2)
 	
-	// Set up MongoDB 
-		// Get keys from dotenv
+		// ------ SCRAPE FROM DISCORD ---------
 		err := godotenv.Load(".env")
 		if err != nil {
 			log.Fatalf("Error loading .env file: %s", err)
 		}
+
+	  fmt.Println("Scrape from discord servers")
+		opt := append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", false),
+		)
+	 
+		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opt...)
+		defer cancel()
+ 
+		ctx, cancel := chromedp.NewContext(allocCtx)
+		defer cancel()
+ 
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(300)*time.Second)
+		defer cancel()
+
+		discordSource := getDiscord(ctx)
+		readDiscordHTML(discordSource)
+		listJobs := readDiscordHTML(discordSource)
+
+		defer chromedp.Cancel(ctx)
+
+
+	// ------- SET UP MONGODB --------
+		// Get keys from dotenv
 		uri := os.Getenv("MONGO_URI")
 	
 		// Use the SetServerAPIOptions() method to set the version of the Stable API on the client
@@ -66,14 +79,44 @@ func main() {
 		if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
 			panic(err)
 		}
-		fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
+		fmt.Println("Successfully connected to MongoDB!")
 
 	// Create collection 
 	var dbName = "jobDatabase"
 	var collectionName = "jobs"
 	collection := client.Database(dbName).Collection(collectionName)
 
-	// Set up Go colly for Web scraping
+	for _, s := range listJobs {
+		if len(s) <= 2 {
+			continue
+		}
+
+		newJob := Job {
+			Company: s,
+			Location: "US",
+			Title: "Software Engineer Intern",
+		}
+
+		exists, err := jobExists(client, collection, newJob)
+		if err != nil {
+			log.Fatal("Error in checking job existence:", err)
+		}
+
+		if exists {
+			fmt.Println("Job already exist, skipping")
+		} else {
+			_, err := collection.InsertOne(context.Background(), newJob)
+			if err != nil {
+				log.Printf("Failed to insert job into MongoDB: %v", err)
+			} else {
+				fmt.Println("Job added to the database successfully!")
+			}
+			newJobPostings = append(newJobPostings, newJob)
+		}
+	}
+		
+
+	// ----- SCRAPE FROM GITHUB  --------
 	c := colly.NewCollector()
 
 	c.OnRequest(func(r *colly.Request) {fmt.Println("Scraping:", r.URL)})
@@ -81,8 +124,12 @@ func main() {
 
 
 	c.OnHTML("table > tbody", func(h *colly.HTMLElement) {
+		count := 0
 		h.ForEach("tr", func(_ int, el *colly.HTMLElement) {
-			// newJob := Job{}
+			if count > 20 {
+				return
+			}
+
 			company := el.ChildText("td:nth-child(1)")
 			title := el.ChildText("td:nth-child(2)")
 			location := el.ChildText("td:nth-child(3)")
@@ -93,7 +140,7 @@ func main() {
 				Location: location,
 			}
 
-				// Check if the job already exists in the database
+			// Check if the job already exists in the database
 			exists, err := jobExists(client, collection, newJob)
 			if err != nil {
 				log.Fatal("Error checking job existence:", err)
@@ -113,13 +160,15 @@ func main() {
 				newJobPostings = append(newJobPostings, newJob)
 			}
 
-			
+			count ++
+
 	})})
 	
 	c.OnError(func(r *colly.Response, err error) {
 		fmt.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
 })
 	c.Visit("https://github.com/SimplifyJobs/Summer2024-Internships")
+
 	emailSending(newJobPostings)
 }
 
@@ -142,4 +191,99 @@ func jobExists(client *mongo.Client, collection *mongo.Collection, job Job) (boo
 	// Job found
 	return true, nil
 }
+
+func getDiscord(ctx context.Context) string {
+	var discordSource string
+	discordChannelUrl := "https://discord.com/channels/698366411864670250/1118750128266825768"
+	discordUsername := os.Getenv("DISCORD_USERNAME")
+	discordPass := os.Getenv("DISCORD_PASS")
+	discordScrollUp := 10
+
+	err := chromedp.Run(ctx, 
+		chromedp.Navigate("https://discord.com/channels/@me"),
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	time.Sleep(3 * time.Second)
+	
+	err = chromedp.Run(ctx, 
+		chromedp.SendKeys(`//input[@name="email"]`, discordUsername, chromedp.BySearch),
+		chromedp.SendKeys(`//input[@name="password"]`, discordPass, chromedp.BySearch),
+		chromedp.Click(`//button[@type="submit"]`, chromedp.BySearch),
+	)
+
+	if err != nil {
+		log.Fatal((err))
+	}
+
+	fmt.Println("Log in successfully")
+
+	if err != nil {
+		log.Fatal("Error logging in:", err)
+	}
+
+	time.Sleep(3 * time.Second)
+
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(discordChannelUrl),   
+		chromedp.WaitVisible(`body`),     
+		                                              
+	)
+
+	if err != nil {
+		log.Fatal("Error entering channel:", err)
+		
+	}
+
+	time.Sleep(4 * time.Second)
+
+	fmt.Println("Enter channel successfully ")
+
+	for i :=0; i < discordScrollUp; i++ {
+		err := chromedp.Run(ctx, 
+			chromedp.ScrollIntoView(`//ol/li[1]`, chromedp.BySearch),
+		)
+
+		if err != nil {
+			log.Fatal("Error scrolling:", err)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	fmt.Println("Take tags successfully")
+
+	err = chromedp.Run(ctx,
+		chromedp.TextContent(`//ol`, &discordSource, chromedp.BySearch),
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	time.Sleep(3 * time.Second)
+	// fmt.Println(discordSource)
+	return discordSource	
+}
+
+
+func readDiscordHTML(discordSource string) []string {
+	listJobs := []string{}
+
+		pattern := `\!process ([a-zA-Z]*)`
+		re := regexp.MustCompile(pattern)
+		matches := re.FindAllStringSubmatch(discordSource, -1)
+		for _, match := range matches {
+			if len(match) > 1 && match[1] != "Company" {
+				listJobs = append(listJobs, match[1])
+			}
+		}
+	// fmt.Println(listJobs)
+	return listJobs
+}
+
+
 
